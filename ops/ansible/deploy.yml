@@ -1,0 +1,34 @@
+- name: Deploy Stockpilot to a Docker-ready Linux host
+  hosts: inventory_servers
+  become: true
+  vars:
+    deploy_dir: /opt/stockpilot
+  tasks:
+    - name: Create project directory
+      ansible.builtin.file:
+        path: '{{ deploy_dir }}'
+        state: directory
+        mode: '0755'
+    - name: Copy source without secrets or generated files
+      ansible.posix.synchronize:
+        src: ../../
+        dest: '{{ deploy_dir }}/'
+        rsync_opts:
+          - --exclude=.venv
+          - --exclude=node_modules
+          - --exclude=.git
+          - --exclude=.env
+          - --exclude=*.db*
+    - name: Install deployment environment
+      ansible.builtin.copy:
+        content: |
+          SECRET_KEY={{ stockpilot_secret }}
+          DEMO_PASSWORD={{ stockpilot_password }}
+          GRAFANA_PASSWORD={{ grafana_password }}
+        dest: '{{ deploy_dir }}/.env'
+        mode: '0600'
+      no_log: true
+    - name: Start application
+      community.docker.docker_compose_v2:
+        project_src: '{{ deploy_dir }}'
+        build: always

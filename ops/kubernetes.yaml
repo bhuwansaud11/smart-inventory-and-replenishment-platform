@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stockpilot-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stockpilot
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: stockpilot
+  template:
+    metadata:
+      labels:
+        app: stockpilot
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: app
+          image: stockpilot:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - secretRef:
+                name: stockpilot-secrets
+          env:
+            - name: DATABASE
+              value: /data/inventory.db
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: '1'
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: stockpilot-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stockpilot
+spec:
+  selector:
+    app: stockpilot
+  ports:
+    - port: 80
+      targetPort: 5000
